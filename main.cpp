@@ -37,12 +37,7 @@ static constexpr int WIDTH = 30;
 static constexpr int HEIGHT = 15;
 static constexpr int ROBOTS = 5;
 
-// Function to generate random numbers in given range
-int random_num(int start, int end) {
-    int range = (end - start) + 1;
-    int random_int = start + (rand() % range);
-    return random_int;
-}
+int turn = 1;
 
 class Point;
 
@@ -56,9 +51,18 @@ class Game;
 
 class Player;
 
+class Action;
+
 class Individual;
 
 Game *game;
+
+// Function to generate random numbers in given range
+int random_num(int start, int end) {
+    int range = (end - start) + 1;
+    int random_int = start + (rand() % range);
+    return random_int;
+}
 
 class Point {
 public:
@@ -106,6 +110,14 @@ public:
     }
 };
 
+class Action {
+public:
+    string type{"WAIT"};
+    string arguments{""};
+
+    Action() = default;
+};
+
 class Entity : public Point {
 public:
     int id{0};
@@ -136,10 +148,88 @@ public:
 
 class Robot : public Entity {
 public:
-    Robot() = default;
+    Action *action{};
+    Point *destination{};
+
+    Robot() {
+        this->action = new Action();
+        this->destination = new Point();
+    }
 
     bool isDead() {
         return this->x == -1 && this->y == -1;
+    }
+
+    void updateDestination(int x, int y) {
+        this->destination->x = x;
+        this->destination->y = y;
+
+        if (this->destination->x > WIDTH) {
+            this->destination->x = WIDTH;
+        }
+
+        if (this->destination->x < 0) {
+            this->destination->x = 0;
+        }
+
+        if (this->destination->y > HEIGHT) {
+            this->destination->y = HEIGHT;
+        }
+
+        if (this->destination->y < 0) {
+            this->destination->y = 0;
+        }
+    }
+
+    void takeAction() {
+        // Le premier tour, les robots vont au moins à x = 8 pour trouver du cristal.
+        if (this->x == 0) {
+            this->action->type = "MOVE";
+            this->destination->x = 4 * random_num(1, 7);
+            this->destination->y = this->y;
+            return;
+        }
+
+        // Si le robot est mort, il attend.
+        if (this->isDead()) {
+            this->action->type = "WAIT";
+            return;
+        }
+
+        // Si le robot porte un cristal, il retourne au QG.
+        if (this->item == Type::ORE) {
+            cerr << "Robot " << this->id << " a trouvé un crsital !" << endl;
+            this->action->type = "MOVE";
+            this->destination->x = 0;
+            this->destination->y = this->y;
+            return;
+        }
+
+        if (this->destination->x == this->x && this->destination->y == this->y && this->action->type != "DIG") {
+            this->action->type = "DIG";
+        } else {
+            this->action->type = "MOVE";
+
+            switch(random_num(0, 3)) {
+                case 0:
+                    this->updateDestination(this->destination->x + 4, this->destination->y);
+                    break;
+                case 1:
+                    this->updateDestination(this->destination->x - 4, this->destination->y);
+                    break;
+                case 2:
+                    this->updateDestination(this->destination->x, this->destination->y + 4);
+                    break;
+                case 3:
+                    this->updateDestination(this->destination->x, this->destination->y - 4);
+                    break;
+                default: break;
+            }
+        }
+    }
+
+    void printAction() {
+        cout << this->action->type << " " << this->destination->x << " " << this->destination->y << endl;
     }
 };
 
@@ -151,6 +241,14 @@ public:
     int owner{0};
 
     Player() = default;
+
+    Player(int owner) {
+        for (int i = 0; i < ROBOTS; i++) {
+            this->robots[i] = new Robot();
+        }
+
+        this->owner = owner;
+    }
 
     void updateRobot(int id, Point *point, Type item, int owner) {
         int idxOffset{0};
@@ -183,7 +281,16 @@ public:
     vector<Entity *> radars;
     vector<Entity *> traps;
 
-    Game() = default;
+    Game() {
+        for (int x = 0; x < WIDTH; x++) {
+            for (int y = 0; y < HEIGHT; y++) {
+                this->grid[x][y] = new Cell();
+            }
+        }
+
+        this->players[0] = new Player(0);
+        this->players[1] = new Player(1);
+    }
 
     Player *player() {
         return this->players[0];
@@ -267,20 +374,6 @@ int main() {
 
     game = new Game();
 
-    for (int x = 0; x < WIDTH; x++) {
-        for (int y = 0; y < HEIGHT; y++) {
-            game->grid[x][y] = new Cell();
-        }
-    }
-
-    game->players[0] = new Player();
-    game->players[1] = new Player();
-
-    for (int i = 0; i < ROBOTS; i++) {
-        game->player()->robots[i] = new Robot();
-        game->opponent()->robots[i] = new Robot();
-    }
-
     // game loop
     while (1) {
         // Amount of ore delivered
@@ -342,11 +435,11 @@ int main() {
         }
 
         for (int i = 0; i < ROBOTS; i++) {
-            // Write an action using cout. DON'T FORGET THE "<< endl"
-            // To debug: cerr << "Debug messages..." << endl;
-            // WAIT|MOVE x y|DIG x y|REQUEST item
-            cout << "DIG " << random_num(1, WIDTH - 1) << " " << random_num(0, HEIGHT - 1) << endl;
+            game->player()->robots[i]->takeAction();
+            game->player()->robots[i]->printAction();
         }
+
+        turn++;
     }
 }
 

@@ -13,6 +13,7 @@
 #include <vector>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 
 using namespace std;
 using namespace std::chrono;
@@ -36,6 +37,9 @@ static constexpr int PLAYERS = 2;
 static constexpr int WIDTH = 30;
 static constexpr int HEIGHT = 15;
 static constexpr int ROBOTS = 5;
+static constexpr int MAX_TURNS = 200;
+static constexpr int POPULATION_SIZE = 100;
+static constexpr int DEPTH = 6;
 
 int turn = 1;
 
@@ -47,9 +51,13 @@ public:
     int sy{-1};
 
     Point() = default;
+
     Point(int x, int y);
+
     virtual void move(int x, int y);
+
     int distance(Point *point);
+
     virtual void reset();
 };
 
@@ -60,6 +68,7 @@ public:
     int ore{0};
 
     Cell() = default;
+
     void update(Point *point, bool hole, bool oreVisible, int ore);
 };
 
@@ -71,16 +80,20 @@ public:
     int owner{0};
 
     Entity() = default;
+
     Entity(int id, Type type, Point *point, Type item, int owner);
+
     void update(int id, Type type, Point *point, Type item, int owner);
 };
 
 class Action {
 public:
     string type{"WAIT"};
-    string arguments{""};
+    Point *destination{};
 
-    Action() = default;
+    Action() {
+        this->destination = new Point();
+    };
 };
 
 class Robot : public Entity {
@@ -90,43 +103,70 @@ public:
     vector<Point *> destinations;
 
     Robot();
+
     bool isDead();
-    void search();
+
     void updateDestination(int x, int y);
+
     void takeAction();
+
     void printAction();
 };
 
 class Player {
 public:
-    Robot *robots[ROBOTS];
+    Robot *robots[ROBOTS]{};
     int ore{0};
     int cooldownRadar{0}, cooldownTrap{0};
     int owner{0};
 
     Player() = default;
-    Player(int owner);
+
+    explicit Player(int owner);
+
     void updateRobot(int id, Point *point, Type item, int owner);
+
     void updateOre(int ore);
+
     void updateCooldownRadar(int cooldown);
+
     void updateCooldownTrap(int cooldown);
 };
 
 class Game {
 public:
-    Cell *grid[WIDTH][HEIGHT];
-    Player *players[PLAYERS];
+    Cell *grid[WIDTH][HEIGHT]{};
+    Player *players[PLAYERS]{};
     vector<Entity *> radars;
     vector<Entity *> traps;
 
     Game();
+
     Player *player();
+
     Player *opponent();
+
     void updateCell(int x, int y, const string &ore, int hole);
+
     void updateEntity(int id, int type, int x, int y, int _item);
 };
 
-class Individual;
+class Individual {
+public:
+    int playerId{};
+    Action *actions[DEPTH][ROBOTS]{};
+    float fitness = -INFINITY;
+
+    Individual() = default;
+
+    explicit Individual(int playerId);
+
+    double evaluate();
+
+    void randomize();
+
+    void simulate(Individual *individual);
+};
 
 Game *game;
 
@@ -189,16 +229,6 @@ Robot::Robot() {
 
 bool Robot::isDead() {
     return this->x == -1 && this->y == -1;
-}
-
-void Robot::search() {
-    for (int x = 0; x < WIDTH; x++) {
-        for (int y = 0; y < HEIGHT; y++) {
-            if (this->distance(game->grid[x][y])) {
-
-            }
-        }
-    }
 }
 
 void Robot::updateDestination(int x, int y) {
@@ -327,18 +357,18 @@ Game::Game() {
     this->players[1] = new Player(1);
 }
 
-Player* Game::player() {
+Player *Game::player() {
     return this->players[0];
 }
 
-Player* Game::opponent() {
+Player *Game::opponent() {
     return this->players[1];
 }
 
 void Game::updateCell(int x, int y, const string &ore, int hole) {
     int oreAmount{0};
     bool oreVisible{false};
-    Point *point = new Point{x, y};
+    auto *point = new Point{x, y};
 
     if (ore != "?") {
         oreAmount = stoi(ore);
@@ -370,7 +400,7 @@ void Game::updateEntity(int id, int type, int x, int y, int _item) {
             break;
     }
 
-    Point *point = new Point{x, y};
+    auto *point = new Point{x, y};
 
     // 0 for your robot, 1 for other robot, 2 for radar, 3 for trap
     switch (type) {
@@ -381,17 +411,43 @@ void Game::updateEntity(int id, int type, int x, int y, int _item) {
             this->opponent()->updateRobot(id, point, item, type);
             break;
         case 2: {
-            Entity *radar = new Entity(id, Type::RADAR, point, item, 0);
+            auto *radar = new Entity(id, Type::RADAR, point, item, 0);
             this->radars.emplace_back(radar);
             break;
         }
         case 3: {
-            Entity *trap = new Entity(id, Type::TRAP, point, item, 0);
+            auto *trap = new Entity(id, Type::TRAP, point, item, 0);
             this->traps.emplace_back(trap);
             break;
         }
         default:
             break;
+    }
+}
+
+Individual::Individual(int playerId) {
+    this->playerId = playerId;
+}
+
+void Individual::randomize() {
+    for (int i = 0; i < DEPTH; i++) {
+        for (int j = 0; j < ROBOTS; j++) {
+            this->actions[i][j]->type = "DIG";
+            this->actions[i][j]->destination->x = random_num(8, WIDTH);
+            this->actions[i][j]->destination->y = random_num(0, HEIGHT);
+        }
+    }
+}
+
+double Individual::evaluate() {
+
+}
+
+void Individual::simulate(Individual *individual) {
+    for (int i = 0; i < DEPTH; i++) {
+        for (int j = 0; j < ROBOTS; j++) {
+
+        }
     }
 }
 
@@ -408,8 +464,11 @@ int main() {
 
     game = new Game();
 
+    auto *best = new Individual(0);
+    auto *bestOpponent = new Individual(1);
+
     // game loop
-    while (1) {
+    while (true) {
         // Amount of ore delivered
         int playerOre;
 
@@ -468,9 +527,27 @@ int main() {
             game->updateEntity(id, type, x, y, item);
         }
 
-        for (int i = 0; i < ROBOTS; i++) {
-            game->player()->robots[i]->takeAction();
-            game->player()->robots[i]->printAction();
+        // *************************************************************************************************************
+        // <Genetic Evolution>
+        // *************************************************************************************************************
+
+        auto **playerPopulation1 = new Individual *[POPULATION_SIZE];
+        auto **playerPopulation2 = new Individual *[POPULATION_SIZE];
+        Individual **tempPlayerPopulation;
+
+        auto **opponentPopulation1 = new Individual *[POPULATION_SIZE];
+        auto **opponentPopulation2 = new Individual *[POPULATION_SIZE];
+        Individual **tempOpponentPopulation;
+
+        playerPopulation1[0] = new Individual(0);
+        playerPopulation1[0]->randomize();
+
+        opponentPopulation1[0] = new Individual(1);
+        opponentPopulation1[0]->randomize();
+
+        for (auto &robot : game->player()->robots) {
+            robot->takeAction();
+            robot->printAction();
         }
 
         turn++;

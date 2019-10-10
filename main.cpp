@@ -40,6 +40,7 @@ static constexpr int ROBOTS = 5;
 static constexpr int MAX_TURNS = 200;
 static constexpr int POPULATION_SIZE = 100;
 static constexpr int DEPTH = 6;
+static constexpr int MOVE_DISTANCE = 4;
 
 int turn = 1;
 
@@ -56,6 +57,8 @@ public:
 
     int distance(Point *point);
 
+    bool isAdjacent(Point *point);
+
     virtual void reset();
 };
 
@@ -67,7 +70,7 @@ public:
 
     Cell() = default;
 
-    void update(Point *point, bool hole, bool oreVisible, int ore);
+    void update(bool hole, bool oreVisible, int ore);
 };
 
 class Entity : public Point {
@@ -88,6 +91,7 @@ class Action {
 public:
     string type{"WAIT"};
     Point *destination{};
+    string item{};
 
     Action() {
         this->destination = new Point();
@@ -104,8 +108,6 @@ public:
 
     bool isDead();
 
-    void updateDestination(int x, int y);
-
     void play();
 
     void move(int x, int y);
@@ -115,6 +117,8 @@ public:
     void request(string item);
 
     void wait();
+
+    void removeItem();
 
     void takeAction();
 
@@ -194,17 +198,19 @@ int Point::distance(Point *point) {
     return abs(x - point->x) + abs(y - point->y);
 }
 
+bool Point::isAdjacent(Point *point) {
+    return this->distance(point) <= 1;
+}
+
 void Point::reset() {
     this->x = this->sx;
     this->y = this->sy;
 }
 
-void Cell::update(Point *point, bool hole, bool oreVisible, int ore) {
+void Cell::update(bool hole, bool oreVisible, int ore) {
     this->hole = hole;
     this->ore = ore;
     this->oreVisible = oreVisible;
-    this->x = point->x;
-    this->y = point->y;
 }
 
 Entity::Entity(int id, Type type, Point *point, Type item, int owner) : Point() {
@@ -234,50 +240,126 @@ bool Robot::isDead() {
     return this->x == -1 && this->y == -1;
 }
 
-void Robot::updateDestination(int x, int y) {
-    this->destination->x = x;
-    this->destination->y = y;
-
-    if (this->destination->x > WIDTH) {
-        this->destination->x = 8;
-        this->destination->y += 1;
-    }
-
-    if (this->destination->x < 0) {
-        this->destination->x = 8;
-        this->destination->y += 1;
-    }
-
-    if (this->destination->y > HEIGHT) {
-        this->destination->y = 0;
-        this->destination->x = 8;
-    }
-
-    if (this->destination->y < 0) {
-        this->destination->y = 0;
-    }
-}
-
 void Robot::play() {
+    if (this->isDead()) {
+        this->wait();
+        return;
+    }
+
     if (this->action->type == "MOVE") {
         this->move(this->destination->x, this->destination->y);
+    } else if (this->action->type == "DIG") {
+        this->dig(this->destination->x, this->destination->y);
+    } else if (this->action->type == "REQUEST") {
+        this->request(this->action->item);
+    } else {
+        this->wait();
     }
 }
 
 void Robot::move(int x, int y) {
+    if (x > WIDTH - 1) {
+        x = WIDTH - 1;
+    } else if (x < 0) {
+        x = 0;
+    }
 
+    if (y > HEIGHT - 1) {
+        y = HEIGHT - 1;
+    } else if (y < 0) {
+        y = 0;
+    }
+
+    int xDiff = x - this->x;
+    int yDiff = y - this->y;
+
+    for (int i = 0; i < MOVE_DISTANCE; i++) {
+        if (xDiff == 0) {
+            if (yDiff < 0) {
+                this->y--;
+                yDiff++;
+            } else if (yDiff > 0) {
+                this->y++;
+                yDiff--;
+            }
+        } else if (yDiff == 0) {
+            if (xDiff < 0) {
+                this->x--;
+                xDiff++;
+            } else if (xDiff > 0) {
+                this->x++;
+                xDiff--;
+            }
+        } else {
+            if (random_num(0, 1) == 0) {
+                if (xDiff < 0) {
+                    this->x--;
+                    xDiff++;
+                } else if (xDiff > 0) {
+                    this->x++;
+                    xDiff--;
+                }
+            } else {
+                if (yDiff < 0) {
+                    this->y--;
+                    yDiff++;
+                } else if (yDiff > 0) {
+                    this->y++;
+                    yDiff--;
+                }
+            }
+        }
+    }
 }
 
 void Robot::dig(int x, int y) {
+    if (x > WIDTH - 1) {
+        x = WIDTH - 1;
+    } else if (x < 0) {
+        x = 0;
+    }
 
+    if (y > HEIGHT - 1) {
+        y = HEIGHT - 1;
+    } else if (y < 0) {
+        y = 0;
+    }
+
+    // Si la case n'est pas adjacente, le robot effectuera une commande MOVE pour se rapprocher de la destination
+    // à la place.
+    if (!this->isAdjacent(new Point(x, y))) {
+        this->move(x, y);
+        return;
+    }
+
+    // Si la case ne contient pas déjà un trou, un nouveau trou est creusé.
+    if (!game->grid[x][y]->hole) {
+        game->updateCell(x, y, to_string(game->grid[x][y]->ore), true);
+        return;
+    }
+
+    // Si le robot contient un objet, l'objet est enterré dans le trou (et retiré de l'inventaire du robot).
+    if (this->item != Type::NONE) {
+        this->removeItem();
+        return;
+    }
+
+    // Si la case contient un filon d'Amadeusium (et qu'un cristal n'a pas été enterré à l'étape 2),
+    // un cristal est extrait du filon et ajouté à l'inventaire du robot.
+    if (game->grid[x][y]->ore > 0) {
+        game->grid[x][y]->update(game->grid[x][y]->hole, true, game->grid[x][y]->ore - 1);
+        this->update(this->id, Type::ROBOT, new Point(this->x, this->y), Type::ORE, this->owner);
+    }
 }
 
 void Robot::request(string item) {
 
 }
 
-void Robot::wait() {
+void Robot::wait() {}
 
+void Robot::removeItem() {
+    this->item = Type ::NONE;
 }
 
 void Robot::takeAction() {
@@ -316,7 +398,7 @@ void Robot::takeAction() {
         this->action->type = "DIG";
     } else {
         this->action->type = "MOVE";
-        this->updateDestination(this->destination->x + 1, this->destination->y);
+//        this->updateDestination(this->destination->x + 1, this->destination->y);
     }
 }
 
@@ -377,14 +459,13 @@ Player *Game::opponent() {
 void Game::updateCell(int x, int y, const string &ore, int hole) {
     int oreAmount{0};
     bool oreVisible{false};
-    auto *point = new Point{x, y};
 
     if (ore != "?") {
         oreAmount = stoi(ore);
         oreVisible = true;
     }
 
-    this->grid[x][y]->update(point, (bool) hole, oreVisible, oreAmount);
+    this->grid[x][y]->update((bool) hole, oreVisible, oreAmount);
 }
 
 void Game::updateEntity(int id, int type, int x, int y, int _item) {

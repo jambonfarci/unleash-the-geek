@@ -537,7 +537,8 @@ double Individual::evaluate() {
 void Individual::simulate(Individual *individual) {
     for (int i = 0; i < DEPTH; i++) {
         for (int j = 0; j < ROBOTS; j++) {
-
+            game->player()->robots[j]->action = this->actions[i][j];
+            game->player()->robots[j]->play();
         }
     }
 }
@@ -635,6 +636,8 @@ int main() {
 
         opponentPopulation1[0] = new Individual(1);
         opponentPopulation1[0]->randomize();
+
+        playerPopulation1[0]->simulate(opponentPopulation1[0]);
 
         for (auto &robot : game->player()->robots) {
             robot->takeAction();

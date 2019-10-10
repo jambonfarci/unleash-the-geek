@@ -54,8 +54,6 @@ public:
 
     Point(int x, int y);
 
-    virtual void move(int x, int y);
-
     int distance(Point *point);
 
     virtual void reset();
@@ -107,6 +105,16 @@ public:
     bool isDead();
 
     void updateDestination(int x, int y);
+
+    void play();
+
+    void move(int x, int y);
+
+    void dig(int x, int y);
+
+    void request(string item);
+
+    void wait();
 
     void takeAction();
 
@@ -182,11 +190,6 @@ Point::Point(int x, int y) {
     this->y = y;
 }
 
-void Point::move(int x, int y) {
-    this->x = x;
-    this->y = y;
-}
-
 int Point::distance(Point *point) {
     return abs(x - point->x) + abs(y - point->y);
 }
@@ -255,6 +258,28 @@ void Robot::updateDestination(int x, int y) {
     }
 }
 
+void Robot::play() {
+    if (this->action->type == "MOVE") {
+        this->move(this->destination->x, this->destination->y);
+    }
+}
+
+void Robot::move(int x, int y) {
+
+}
+
+void Robot::dig(int x, int y) {
+
+}
+
+void Robot::request(string item) {
+
+}
+
+void Robot::wait() {
+
+}
+
 void Robot::takeAction() {
     // Le premier tour, le robot va au moins à x = 8 pour trouver du cristal.
     if (turn == 1) {
@@ -292,22 +317,6 @@ void Robot::takeAction() {
     } else {
         this->action->type = "MOVE";
         this->updateDestination(this->destination->x + 1, this->destination->y);
-
-//            switch(random_num(0, 3)) {
-//                case 0:
-//                    this->updateDestination(this->destination->x + 4, this->destination->y);
-//                    break;
-//                case 1:
-//                    this->updateDestination(this->destination->x - 4, this->destination->y);
-//                    break;
-//                case 2:
-//                    this->updateDestination(this->destination->x, this->destination->y + 4);
-//                    break;
-//                case 3:
-//                    this->updateDestination(this->destination->x, this->destination->y - 4);
-//                    break;
-//                default: break;
-//            }
     }
 }
 
@@ -432,6 +441,7 @@ Individual::Individual(int playerId) {
 void Individual::randomize() {
     for (int i = 0; i < DEPTH; i++) {
         for (int j = 0; j < ROBOTS; j++) {
+            this->actions[i][j] = new Action();
             this->actions[i][j]->type = "DIG";
             this->actions[i][j]->destination->x = random_num(8, WIDTH);
             this->actions[i][j]->destination->y = random_num(0, HEIGHT);
@@ -549,6 +559,11 @@ int main() {
             robot->takeAction();
             robot->printAction();
         }
+
+        delete[] playerPopulation1;
+        delete[] playerPopulation2;
+        delete[] opponentPopulation1;
+        delete[] opponentPopulation2;
 
         turn++;
     }

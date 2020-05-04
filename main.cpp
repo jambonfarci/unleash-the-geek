@@ -65,12 +65,17 @@ public:
 class Cell : public Point {
 public:
     bool hole{false};
+    bool sHole{false};
     bool oreVisible{false};
+    bool sOreVisible{false};
     int ore{0};
+    int sOre{0};
 
     Cell() = default;
 
     void update(bool hole, bool oreVisible, int ore);
+
+    void reset();
 };
 
 class Entity : public Point {
@@ -78,6 +83,7 @@ public:
     int id{0};
     Type type{Type::NONE};
     Type item{Type::NONE};
+    Type sItem{Type::NONE};
     int owner{0};
 
     Entity() = default;
@@ -85,6 +91,8 @@ public:
     Entity(int id, Type type, Point *point, Type item, int owner);
 
     void update(int id, Type type, Point *point, Type item, int owner);
+
+    void reset();
 };
 
 class Action {
@@ -102,7 +110,6 @@ class Robot : public Entity {
 public:
     Action *action{};
     Point *destination{};
-    vector<Point *> destinations;
 
     Robot();
 
@@ -123,12 +130,15 @@ public:
     void takeAction();
 
     void printAction();
+
+    void reset();
 };
 
 class Player {
 public:
     Robot *robots[ROBOTS]{};
     int ore{0};
+    int sOre{0};
     int cooldownRadar{0}, cooldownTrap{0};
     int owner{0};
 
@@ -143,6 +153,8 @@ public:
     void updateCooldownRadar(int cooldown);
 
     void updateCooldownTrap(int cooldown);
+
+    void reset();
 };
 
 class Game {
@@ -161,6 +173,8 @@ public:
     void updateCell(int x, int y, const string &ore, int hole);
 
     void updateEntity(int id, int type, int x, int y, int _item);
+
+    void reset();
 };
 
 class Individual {
@@ -191,7 +205,9 @@ int random_num(int start, int end) {
 
 Point::Point(int x, int y) {
     this->x = x;
+    this->sx = x;
     this->y = y;
+    this->sy = y;
 }
 
 int Point::distance(Point *point) {
@@ -213,6 +229,13 @@ void Cell::update(bool hole, bool oreVisible, int ore) {
     this->oreVisible = oreVisible;
 }
 
+void Cell::reset() {
+    Point::reset();
+    this->hole = this->sHole;
+    this->ore = this->sOre;
+    this->oreVisible = this->sOreVisible;
+}
+
 Entity::Entity(int id, Type type, Point *point, Type item, int owner) : Point() {
     this->x = point->x;
     this->y = point->y;
@@ -220,6 +243,7 @@ Entity::Entity(int id, Type type, Point *point, Type item, int owner) : Point() 
     this->type = type;
     this->owner = owner;
     this->item = item;
+    this->sItem = item;
 }
 
 void Entity::update(int id, Type type, Point *point, Type item, int owner) {
@@ -229,6 +253,11 @@ void Entity::update(int id, Type type, Point *point, Type item, int owner) {
     this->type = type;
     this->owner = owner;
     this->item = item;
+}
+
+void Entity::reset() {
+    Point::reset();
+    this->item = this->sItem;
 }
 
 Robot::Robot() {
@@ -406,6 +435,10 @@ void Robot::printAction() {
     cout << this->action->type << " " << this->destination->x << " " << this->destination->y << endl;
 }
 
+void Robot::reset() {
+    Entity::reset();
+}
+
 Player::Player(int owner) {
     for (int i = 0; i < ROBOTS; i++) {
         this->robots[i] = new Robot();
@@ -435,6 +468,14 @@ void Player::updateCooldownRadar(int cooldown) {
 
 void Player::updateCooldownTrap(int cooldown) {
     this->cooldownTrap = cooldown;
+}
+
+void Player::reset() {
+    this->ore = this->sOre;
+
+    for (int i = 0; i < ROBOTS; i++) {
+        this->robots[i]->reset();
+    }
 }
 
 Game::Game() {
@@ -539,7 +580,19 @@ void Individual::simulate(Individual *individual) {
         for (int j = 0; j < ROBOTS; j++) {
             game->player()->robots[j]->action = this->actions[i][j];
             game->player()->robots[j]->play();
+
+            game->opponent()->robots[j]->action = individual->actions[i][j];
+            game->opponent()->robots[j]->play();
         }
+    }
+
+    this->fitness = this->evaluate();
+    individual->fitness = individual->evaluate();
+
+    // Reset
+    for (int i = 0; i < ROBOTS; i++) {
+        game->player()->robots[i]->reset();
+        game->opponent()->robots[i]->reset();
     }
 }
 
